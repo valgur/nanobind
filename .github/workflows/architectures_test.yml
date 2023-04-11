@@ -1,0 +1,59 @@
+name: Architectures support test
+
+on:
+  push:
+
+jobs:
+  standard:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - [Linux, ubuntu-latest, x86_64]
+          - [Linux, ubuntu-latest, i686]
+          - [Linux, ubuntu-latest, aarch64]
+          - [Linux, ubuntu-latest, ppc64le]
+          - [Linux, ubuntu-latest, s390x]
+          - [Windows, windows-latest, AMD64]
+          - [Windows, windows-latest, x86]
+          - [Windows, windows-latest, ARM64]
+          - [MacOS, macos-latest, x86_64]
+          - [MacOS, macos-latest, arm64]
+          - [MacOS, macos-latest, universal2]
+
+    name: "${{ matrix.platform[0] }} - ${{ matrix.platform[2] }}"
+    runs-on: ${{ matrix.platform[1] }}
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+
+    - name: Set up QEMU
+      if: runner.os == 'Linux'
+      uses: docker/setup-qemu-action@v2
+      with:
+        platforms: all
+
+    - name: Setup Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install cibuildwheel
+      run: python -m pip install cibuildwheel
+
+    - name: Build and test
+      run: python -m cibuildwheel --output-dir wheelhouse
+      env:
+        CIBW_ARCHS: ${{ matrix.platform[2] }}
+        CIBW_BUILD: 'cp311-*'
+        CIBW_SKIP: '*-musllinux_*'
+        CIBW_BEFORE_ALL: >
+          ${{ runner.os == 'Linux' && 'apt-get -y install libeigen3-dev;' || '' }}
+          python -m pip install cmake ninja numpy scipy
+        CIBW_BEFORE_BUILD: >
+          cmake -S . -B build -DNB_TEST_STABLE_ABI=ON -DNB_TEST_SHARED_BUILD=True;
+          cmake --build build -j 2
+        CIBW_TEST_REQUIRES: pytest pytest-github-actions-annotate-failures
+        CIBW_TEST_COMMAND: cd build && python -m pytest
